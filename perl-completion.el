@@ -2,7 +2,7 @@
 ;;; perl-completion.el --- 
 
 ;; Author: Kenji.Imakado <ken.imakaado@gmail.com>
-;; Version: 0.1
+;; Version: 0.2
 ;; Keywords: perl
 
 ;; This file is free software; you can redistribute it and/or modify
@@ -42,7 +42,7 @@
   "補完対象に含めないモジュール名のリスト")
 
 ;;; const
-(defconst plcmp-version 0.1)
+(defconst plcmp-version 0.2)
 (defconst plcmp-lang (cond ((string-match "japanese" (format "%s" locale-coding-system)) 'ja)
                            (t 'english)))
 (defconst plcmp-perlvar-output-buf-name "*perlvar output*")
@@ -122,7 +122,7 @@
 (defvar plcmp-get-installed-modules-async-command
   (concat plcmp-get-installed-modules-command " &"))
 ;;; %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-;;; Utilities for Modules
+;;; Modules
 ;;; %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 (defun plcmp-get-using-modules ()
   (let ((re "^[ \t]*use[ \t]+\\([a-zA-Z:_]+\\)\\s *[^;\n]*;");todo
@@ -136,6 +136,11 @@
     (setq ret (set-difference ret plcmp-config-modules-filter-list :test 'string-equal))
     (plcmp-log "get-using-modules: %S" ret)
     ret))
+
+(defun plcmp-clear-cache-using-modules ()
+  (interactive)
+  (setq plcmp-cache-using-modules nil))
+
 
 (defun plcmp-modules-filter (mods)
   (let ((ret nil) )
@@ -204,7 +209,6 @@ return los"
 ;; my $cpan = Parse::CPAN::Authors->new( $authors_file );
 ;; => var = "$cpan", mod = Parse::CPAN::Authors
 (defun plcmp-get-obj-instance-of-module-maybe-alist ()
-  (interactive)
   (let* ((re (plcmp-get-modules-re))
          (re (concat "\\(\\$[A-Za-z_][A-Za-z_0-9]*\\)\\s *=\\s *" re)) ;perliden + usingmodule
          (ret nil))
@@ -269,10 +273,6 @@ return los"
             do (add-to-list 'ret (match-string-no-properties 1))))
     (plcmp-log "get-current-package: %S" ret)
     ret))
-
-;;; %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-;;; Built in
-;;; %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
 ;;; %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -738,6 +738,22 @@ plcmp-initialize 内で初期化される")
           (incf plcmp-anything-digit-shortcut-count))
         (plcmp-anything-insert-match match 'insert)))))
 
+;;redefined
+(defun plcmp-anything-execute-selection-action () 
+  (let* ((selection (if plcmp-anything-saved-sources
+                        plcmp-anything-saved-selection
+                      (plcmp-anything-get-selection)))
+         (action (or plcmp-anything-saved-action
+                     (if plcmp-anything-saved-sources
+                         (plcmp-anything-get-selection)
+                       (plcmp-anything-get-action)))))
+    (if (and (listp action)
+             (not (functionp action)))
+        (setq action (cdar action)))
+    (setq plcmp-anything-saved-action nil)
+    (if (and selection action)
+        (funcall action selection))))
+
 (defvar plcmp-anything-type-attributes
   `((plcmp
      (action . (("Insert" . plcmp-insert)
@@ -778,7 +794,8 @@ plcmp-initialize 内で初期化される")
     (type . plcmp)
     (init . (lambda ()
               (plcmp-initialize)
-              (setq plcmp-state 'builtin-functions)))
+              (setq plcmp-initial-input ""
+                    plcmp-state 'builtin-functions)))
     (candidates . plcmp-build-candidates-with-args)
     (match . (plcmp-match))))
 
@@ -787,7 +804,8 @@ plcmp-initialize 内で初期化される")
     (type . plcmp)
     (init . (lambda ()
               (plcmp-initialize)
-              (setq plcmp-state 'builtin-variables)))
+              (setq plcmp-initial-input ""
+                    plcmp-state 'builtin-variables)))
     (candidates . plcmp-build-candidates-with-args)
     (match . (plcmp-match))))
 
@@ -805,7 +823,8 @@ plcmp-initialize 内で初期化される")
     (type . plcmp)
     (init . (lambda ()
               (plcmp-initialize)
-              (setq plcmp-state 'using-modules)))
+              (setq plcmp-initial-input ""
+                    plcmp-state 'using-modules)))
     (candidates . plcmp-build-candidates-with-args)
     (match . (plcmp-match))))
 
@@ -814,7 +833,8 @@ plcmp-initialize 内で初期化される")
     (type . plcmp)
     (init . (lambda ()
               (plcmp-initialize)
-              (setq plcmp-state 'installed-modules)))
+              (setq plcmp-state 'installed-modules
+                    plcmp-initial-input "")))
     (candidates . plcmp-build-candidates-with-args)
     (match . (plcmp-match))))
 
@@ -979,7 +999,7 @@ plcmp-initialize 内で初期化される")
   "return buffer"
   (shell-command (concat "perldoc " word) plcmp-perldoc-output-buf-name)
   (get-buffer plcmp-perldoc-output-buf-name))
-  
+
 (defun plcmp-open-module-file (candidate)
   (condition-case e
       (let ((modulename (plcmp-get-modulename-candidate candidate)))
@@ -1100,6 +1120,17 @@ plcmp-initialize 内で初期化される")
     ;; test
     (plcmp-anything-exit-minibuffer)))
 
+;; TODO
+;; code from anything-config-rubikitch.el
+(defvar plcmp-anything-saved-action nil
+  "Saved value of the currently selected action by key.")
+(defun plcmp-call-action-by-action-name (action-name)
+  (setq plcmp-anything-saved-selection (plcmp-anything-get-selection))
+  (unless plcmp-anything-saved-selection
+    (error "Nothing is selected."))
+  (setq plcmp-anything-saved-action (cdr (assoc action-name (plcmp-anything-get-action))))
+  (plcmp-anything-exit-minibuffer))
+
 (defun plcmp-action-insert-modulename ()
   (interactive)
   (plcmp-call-action "Insert modulename"))
@@ -1110,7 +1141,7 @@ plcmp-initialize 内で初期化される")
 
 (defun plcmp-action-perldoc ()
   (interactive)
-  (plcmp-call-action "Perldoc" t))
+  (plcmp-call-action-by-action-name "Perldoc"))
 
 
 ;;; %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -1142,6 +1173,21 @@ plcmp-initialize 内で初期化される")
 (defun plcmp-installed-modules-complete ()
   (interactive)
   (let ((plcmp-anything-sources (list plcmp-anything-source-installed-modules)))
+    (plcmp-anything)))
+
+(defun plcmp-builtin-function-complete ()
+  (interactive)
+  (let ((plcmp-anything-sources (list plcmp-anything-source-builtin-functions)))
+    (plcmp-anything)))
+
+(defun plcmp-builtin-variables-complete ()
+  (interactive)
+  (let ((plcmp-anything-sources (list plcmp-anything-source-builtin-variables)))
+    (plcmp-anything)))
+
+(defun plcmp-using-modules-complete ()
+  (interactive)
+  (let ((plcmp-anything-sources (list plcmp-anything-source-using-modules)))
     (plcmp-anything)))
 
 (defun plcmp-reset ()
@@ -1213,9 +1259,11 @@ plcmp-initialize 内で初期化される")
 (plcmp-set-key (kbd "M-TAB") 'plcmp-smart-complete)
 (plcmp-set-key (kbd "C-RET") 'plcmp-smart-complete)
 (plcmp-set-key (kbd "C-<return>") 'plcmp-smart-complete)
-(plcmp-set-key (kbd "C-c f") 'plcmp-dabbrev-functions)
-(plcmp-set-key (kbd "C-c v") 'plcmp-dabbrev-variables)
+(plcmp-set-key (kbd "C-c f") 'plcmp-builtin-function-complete)
+(plcmp-set-key (kbd "C-c v") 'plcmp-builtin-variables-complete)
 (plcmp-set-key (kbd "C-c i") 'plcmp-installed-modules-complete)
+(plcmp-set-key (kbd "C-c u") 'plcmp-using-modules-complete)
+(plcmp-set-key (kbd "C-c c") 'plcmp-clear-all-cache)
 
 (defun plcmp-mode-init ()
   ;;初回起動時
@@ -1495,18 +1543,19 @@ plcmp-initialize 内で初期化される")
       (remove-hook 'post-command-hook 'plcmp-anything-check-minibuffer-input)
       (set-frame-configuration frameconfig)))
   (plcmp-anything-execute-selection-action))
-(defun plcmp-anything-execute-selection-action () 
-  (let* ((selection (if plcmp-anything-saved-sources
-                        plcmp-anything-saved-selection
-                      (plcmp-anything-get-selection)))
-         (action (if plcmp-anything-saved-sources
-                     (plcmp-anything-get-selection)
-                   (plcmp-anything-get-action))))
-    (if (and (listp action)
-             (not (functionp action)))  
-        (setq action (cdar action)))
-    (if (and selection action)
-        (funcall action selection))))
+;; Redefined above
+;; (defun plcmp-anything-execute-selection-action () 
+;;   (let* ((selection (if plcmp-anything-saved-sources
+;;                         plcmp-anything-saved-selection
+;;                       (plcmp-anything-get-selection)))
+;;          (action (if plcmp-anything-saved-sources
+;;                      (plcmp-anything-get-selection)
+;;                    (plcmp-anything-get-action))))
+;;     (if (and (listp action)
+;;              (not (functionp action)))  
+;;         (setq action (cdar action)))
+;;     (if (and selection action)
+;;         (funcall action selection))))
 (defun plcmp-anything-get-selection () 
   (unless (= (buffer-size (get-buffer plcmp-anything-buffer)) 0)
     (with-current-buffer plcmp-anything-buffer
