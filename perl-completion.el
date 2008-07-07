@@ -167,6 +167,8 @@ non-nilの場合は\"|\"以降の文字列のみにマッチする"
 (defstruct (plcmp-completion-data (:constructor plcmp-make-completion-data))
   (initial-input "")
   state
+  default-action-state
+  persistent-action-buffer-point
   using-modules
   current-buffer
   current-object
@@ -312,6 +314,16 @@ non-nilの場合は\"|\"以降の文字列のみにマッチする"
   `(condition-case e (progn ,@body)
      (error (plcmp-log "Error plcmp-ignore-errors :  %s" (error-message-string e)))))
 
+;; idea: anything-dabbrev-expand.el
+(lexical-let ((store-times 0))
+  (defun plcmp-seq-times (command-name &optional max)
+    (let ((max (or max -99)))
+      (if (eq last-command command-name)
+          (if (= (incf store-times) max)
+              (setq store-times 0)
+            store-times)
+        (setq store-times 0)))))
+
 ;;; log
 (defvar plcmp-debug nil)
 (defvar plcmp-log-buf-name "*plcmp debug*")
@@ -402,10 +414,7 @@ non-nilの場合は\"|\"以降の文字列のみにマッチする"
         collect s into unders
         else
         collect s into methods
-        finally return (nconc methods unders
-                        ;; (sort methods 'string<)
-                        ;;                               (sort unders 'string<)
-                              )))
+        finally return (nconc methods unders)))
 
 (defsubst plcmp-inspect-methods (module)
   "Class::Inspectorを使用してモジュールのメソッド調べる。
@@ -491,7 +500,7 @@ return los"
   (plcmp-with-completion-data-slots struct
       (using-modules installed-modules current-package
                      current-buffer obj-instance-of-module-maybe-alist
-                     current-object other-perl-buffers)
+                     current-object other-perl-buffers default-action-state)
     ;; initialize slots
     (setf installed-modules (plcmp-fetch-installed-modules struct)
           current-buffer (current-buffer)
@@ -500,7 +509,9 @@ return los"
           plcmp-modules-methods-alist (plcmp-get-modules-methods-alist struct) ;buffer local variable
           obj-instance-of-module-maybe-alist (plcmp-get-obj-instance-of-module-maybe-alist struct)
           other-perl-buffers (plcmp-get-other-perl-buffers struct)
-          current-object "")
+          current-object ""
+          default-action-state nil
+          persistent-action-buffer-point nil)
 
     ;; initialize variable
     (setq plcmp-metadata-matcher
@@ -533,7 +544,7 @@ return los"
          ((and (plcmp-method-p)         ; TODO
                (string-match "^\\(\\$self\\|__PACKAGE__\\)$" obj-str))
           (setf initial-input start-input
-                state 'setf
+                state 'self
                 current-object obj-str))
          ;; methods
          ;; Foo->`!!'
@@ -819,11 +830,18 @@ return los"
 ;;;; anything
 ;;;; %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 ;;; actions
-(defun plcmp-insert (candidate)
+(defun plcmp-insert (struct candidate)
   (plcmp-with-completion-data-slots plcmp-data
-      (initial-input)
-    (delete-backward-char (length initial-input))
-    (insert (plcmp-get-real-candidate candidate))))
+      (initial-input default-action-state persistent-action-buffer-point)
+    (cond
+     ((eq default-action-state 'perldoc-m)
+      (multiple-value-bind (output-buf module method)
+                           (plcmp-perldoc-m-create-buffer struct candidate)
+        (pop-to-buffer output-buf)
+        (goto-char persistent-action-buffer-point)))
+     (t
+      (delete-backward-char (length initial-input))
+      (insert (plcmp-get-real-candidate candidate))))))
 
 (defun plcmp-insert-modulename (candidate)
   (plcmp-with-completion-data-slots plcmp-data
@@ -898,14 +916,20 @@ return los"
         (values module method)))))
 
 (defun plcmp-fontify-re-search-forward (regexp)
-  (when (re-search-forward regexp nil t)
-    (let ((beg (match-beginning 1))
-          (end (match-end 1)))
-      (when (and beg end)
-        (if (overlayp plcmp-overlay)
-            (move-overlay plcmp-overlay beg end (current-buffer))
-          (setq plcmp-overlay (make-overlay beg end)))
-        (overlay-put plcmp-overlay 'face plcmp-search-match-face)))))
+  (let ((struct plcmp-data)) ;TODO
+    (plcmp-with-completion-data-slots struct
+        (persistent-action-buffer-point)
+      (when (re-search-forward regexp nil t)
+        (let ((beg (match-beginning 1))
+              (end (match-end 1)))
+          ;; remember point
+          (setq persistent-action-buffer-point (point))
+          
+          (when (and beg end)
+            (if (overlayp plcmp-overlay)
+                (move-overlay plcmp-overlay beg end (current-buffer))
+              (setq plcmp-overlay (make-overlay beg end)))
+            (overlay-put plcmp-overlay 'face plcmp-search-match-face)))))))
 
 (defun plcmp-visit-and-re-search-forward (regexp buffer-name)
   (pop-to-buffer buffer-name)
@@ -1005,6 +1029,59 @@ return buffer"
                        (plcmp-get-real-candidate candidate))))
        (plcmp-open-perldoc modname 'module pop-to-buffer)))))
 
+(defun plcmp-perldoc-m-create-buffer (struct candidate)
+  (let (module method)
+    (plcmp-acond
+      ((plcmp-get-module-and-method-by-candidate struct candidate)
+       (setq module (first it)
+             method (second it)))
+      (t
+       (setq module (plcmp-get-real-candidate candidate))))
+    (let ((cperl-mode-hook nil)
+          (output-buf (concat "*Perldoc -m " module "*")))
+      (cond
+       ((buffer-live-p (get-buffer output-buf))
+        (values output-buf module method))
+       (t
+        (shell-command (concat "perldoc -m " module) output-buf)
+
+        (with-current-buffer output-buf
+          (goto-char (point-min))
+          (cperl-mode))
+
+        (values output-buf module method))))))
+
+(defun plcmp-perldoc-m (struct candidate)
+  (multiple-value-bind (output-buf module method)
+                       (plcmp-perldoc-m-create-buffer struct candidate)
+    (let* ((re (cond ((null method)
+                      "")
+                     ((= (plcmp-seq-times 'plcmp-persistent-perldoc-m) 0)
+                      (rx-to-string `(and "sub" (1+ space) (group (eval ,method)))))
+                     (t
+                      (rx-to-string `(and symbol-start (group (eval ,method)) symbol-end))))))
+      (plcmp-visit-and-re-search-forward re output-buf))))
+
+(defun plcmp-persistent-perldoc-m ()
+  (interactive)
+  (let ((struct plcmp-data))
+    (plcmp-with-completion-data-slots struct
+        (default-action-state)
+      (save-selected-window
+        (select-window (get-buffer-window plcmp-anything-buffer))
+        (select-window (setq minibuffer-scroll-window
+                             (if (one-window-p t) (split-window) (next-window (selected-window) 1))))
+        (let* ((plcmp-anything-window (get-buffer-window plcmp-anything-buffer))
+               (selection (if plcmp-anything-saved-sources
+                              ;; the action list is shown
+                              plcmp-anything-saved-selection
+                            (plcmp-anything-get-selection))))
+          (set-window-dedicated-p plcmp-anything-window t)
+          (unwind-protect
+              (progn
+                (setq default-action-state 'perldoc-m)
+                (plcmp-perldoc-m struct selection))
+            (set-window-dedicated-p plcmp-anything-window nil)))))))
 
 (defun plcmp-open-module-file (struct candidate)
   (condition-case e
@@ -1047,7 +1124,7 @@ return buffer"
     (define-key map (kbd "C-z")  'plcmp-anything-execute-persistent-action)
 
     ;; call action with selection
-    ;;(define-key map (kbd "M") 'plcmp-action-insert-modulename)
+    (define-key map (kbd "M") 'plcmp-persistent-perldoc-m)
     (define-key map (kbd "D") 'plcmp-action-perldoc)
     (define-key map (kbd "O") 'plcmp-action-open-module-file)
 
@@ -1110,11 +1187,14 @@ return buffer"
 
 (defvar plcmp-anything-type-attributes
   `((plcmp
-     (action . (("Insert" . plcmp-insert)
+     (action . (("Insert" . (lambda (candidate)
+                              (plcmp-insert plcmp-data candidate)))
                 ("Open module file" . (lambda (candidate)
                                         (plcmp-open-module-file plcmp-data candidate)))
                 ("Perldoc" . (lambda (candidate)
                                (plcmp-perldoc plcmp-data candidate)))
+                ("Perldoc -m" . (lambda (candidate)
+                                  (plcmp-perldoc-m plcmp-data candidate)))
                 ))
      (persistent-action . (lambda (candidate)
                             (plcmp-perldoc plcmp-data candidate))))))
@@ -1182,7 +1262,7 @@ return buffer"
     (match . (plcmp-match))))
 
 (defvar plcmp-anything-source-all
-  `((name . "installed-modules")
+  `((name . "All")
     (type . plcmp)
     (init . (lambda ()
               (plcmp-initialize plcmp-data)
@@ -1269,6 +1349,10 @@ return buffer"
   (interactive)
   (plcmp-call-action-by-action-name "Open module file"))
 
+(defun plcmp-action-perldoc-m ()
+    (interactive)
+    (plcmp-call-action-by-action-name "Perldoc -m"))
+
 (defun plcmp-action-perldoc ()
   (interactive)
   (plcmp-call-action-by-action-name "Perldoc"))
@@ -1322,8 +1406,7 @@ return buffer"
           (let ((minibuffer-local-map plcmp-anything-map))
             (if (null initial-pattern)
                 (read-string "pattern: ")
-              (read-string "pattern: " initial-pattern)
-              (plcmp-anything-check-minibuffer-input))
+              (read-string "pattern: " initial-pattern))
             ))
       (plcmp-anything-cleanup)
       (remove-hook 'post-command-hook 'plcmp-anything-check-minibuffer-input)
