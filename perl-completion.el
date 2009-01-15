@@ -133,7 +133,9 @@ letでダイナミックにバインドしているので実行後に元の値�
 
 
 ;;; variables
-(defvar plcmp-version 1.0)
+(defvar plcmp-version 1.01)
+
+(defvar plcmp-default-lighter  " PLCompletion")
 
 (defvar plcmp-perl-ident-re "[a-zA-Z_][a-zA-Z_0-9]*")
 
@@ -276,16 +278,35 @@ customize-variable `plcmp-additional-PERL5LIB-directories' に設定する.")
              (file-exists-p lib-dir)
              (directory-file-name lib-dir))))))
 
+(defun* plcmp--get-lib-path-list-liberal (&optional (dir (plcmp-get-current-directory))
+                                                    (libdir-names '("extlib" "lib")))
+  "return list of string"
+  (flet ((aux (libdir-name updirs)
+              (loop for updir in updirs
+                    for dir = (expand-file-name
+                               (concat updir libdir-name))
+                    when (and (file-exists-p dir)
+                              (file-directory-p dir))
+                    collect dir)))
+    (let* ((updirs (loop for updir in '("../" "../../" "../../../")
+                         collect (concat dir updir)))
+           (updirs (mapcar 'expand-file-name updirs))
+           (updirs (mapcar 'file-name-directory updirs)))
+      (loop for libdir-name in libdir-names
+            append (aux libdir-name updirs)))))
+
+
+
 (defmacro plcmp-with-set-perl5-lib (&rest body)
   "Set each path that value of `plcmp--get-lib-path' to PERL5LIB.
 then execute BODY"
   `(let ((process-environment (copy-sequence process-environment)))
      (require 'env)
-     (let ((additional-lib-list (append (ignore-errors (mapcar 'expand-file-name plcmp-additional-PERL5LIB-directories))
-                                        plcmp--PERL5LIB-directories
-                                        (when (plcmp--get-lib-path)
-                                          (list (plcmp--get-lib-path)))))
-           (old-perl5lib (or (getenv "PERL5LIB") "")))
+     (let* ((additional-lib-list (append (ignore-errors (mapcar 'expand-file-name plcmp-additional-PERL5LIB-directories))
+                                         plcmp--PERL5LIB-directories
+                                         (when (plcmp--get-lib-path)
+                                           (list (plcmp--get-lib-path)))))
+            (old-perl5lib (or (getenv "PERL5LIB") "")))
        (when additional-lib-list
          (let* ((additional-lib-str (mapconcat 'identity additional-lib-list path-separator))
                 (current-perl5lib (concat additional-lib-str path-separator old-perl5lib))
@@ -328,7 +349,7 @@ then execute BODY"
   (string-match "^[/:$@&%(),.?<>+!|^*';\"\\]+$" s))
 
 (defsubst plcmp-module-p (s)
-  (string-match "^[a-zA-Z:]+$" s))
+  (string-match (format "^%s$" plcmp-perl-package-re) s))
 
 (defsubst plcmp-perl-identifier-p (s)
   (string-match (concat "^" plcmp-perl-ident-re "$") s))
@@ -398,6 +419,11 @@ then execute BODY"
       'occur-by-moccur
     'occur))
 
+(defun plcmp-update-lighter (str)
+  (when (and (boundp 'perl-completion-mode)
+             (assq 'perl-completion-mode minor-mode-alist))
+    (setcar (cdr (assq 'perl-completion-mode minor-mode-alist)) str)))
+
 
 
 ;;; initial-input
@@ -451,9 +477,9 @@ then execute BODY"
 
 (defun plcmp-get-installed-modules ()
   (unless (plcmp-tramp-p)
-    (or plcmp-installed-modules
-        (setq plcmp-installed-modules
-              (plcmp--installed-modules-synchronously)))))
+    (prog1 plcmp-installed-modules
+      (or plcmp-installed-modules
+          (plcmp--installed-modules-asynchronously)))))
 
 (defun plcmp--installed-modules-synchronously ()
   (message "fetching installed modules...")
@@ -479,29 +505,39 @@ then execute BODY"
     (with-current-buffer plcmp-installed-modules-buffer-name
       (unless (zerop (buffer-size))
         (setq plcmp-installed-modules (plcmp-collect-matches plcmp-perl-package-re))
-        (message "finished getting installed modules asynchronously.")
+        ;; (message "finished getting installed modules asynchronously.")
+        (plcmp-update-lighter plcmp-default-lighter)
         (plcmp-log "cached installed modules %s" plcmp-installed-modules)))))
 
 (defun plcmp--installed-modules-asynchronously ()
   "start process, set sentinel, return process."
-  (unless (plcmp-tramp-p)
-    (message "fetching installed modules...")
-    (with-current-buffer (get-buffer-create plcmp-installed-modules-buffer-name)
-      (erase-buffer))
-    (let* ((command "find")
-           (args (concat "`perl -e 'pop @INC; print join(q{ }, @INC);'`"
-                         " -name '*.pm' -type f "
-                         "| xargs grep -E -h -o 'package [a-zA-Z0-9:]+;' "
-                         "| perl -nle 's/package\s+(.+);/$1/; print' "
-                         "| sort "
-                         "| uniq "))
-           (proc (start-process-shell-command "installed perl modules"
-                                              plcmp-installed-modules-buffer-name
-                                              command
-                                              args)))
-      (set-process-sentinel proc 'plcmp--installed-modules-set-cache)
-      ;; return process
-      proc)))
+  (let ((proc-run?
+         (lambda ()
+           (eq 'run
+               (let ((proc (get-buffer-process plcmp-installed-modules-buffer-name)))
+                 (when (processp proc)
+                   (process-status proc)))))))
+    (unless (or (plcmp-tramp-p)
+                (funcall proc-run?))
+      ;; (message "fetching installed modules...")
+      (plcmp-update-lighter (format "%s[getting modules]" plcmp-default-lighter))
+      (with-current-buffer (get-buffer-create plcmp-installed-modules-buffer-name)
+        (erase-buffer))
+      (let* ((command "find")
+             (args (concat "`perl -e 'pop @INC; print join(q{ }, @INC);'`"
+                           " -name '*.pm' -type f "
+                           "| xargs grep -E -h -o 'package [a-zA-Z0-9:]+;' "
+                           "| perl -nle 's/package\s+(.+);/$1/; print' "
+                           "| sort "
+                           "| uniq "))
+             (proc (start-process-shell-command "installed perl modules"
+                                                plcmp-installed-modules-buffer-name
+                                                command
+                                                args)))
+        (set-process-sentinel proc 'plcmp--installed-modules-set-cache)
+        ;; return process
+        proc))))
+
 
 
 ;;; current package
@@ -616,7 +652,7 @@ return alist (module-name . list of methods)"
 
 (defun plcmp-get-module-file-path (module-name)
   (plcmp-with-set-perl5-lib
-   (let* ((path (shell-command-to-string (concat "perldoc -l " (shell-quote-argument module-name))))
+   (let* ((path (shell-command-to-string (concat "perldoc -ml " (shell-quote-argument module-name))))
           (path (plcmp-trim path)))
      (and (stringp path)
           (file-exists-p path)
@@ -711,8 +747,7 @@ return alist (module-name . list of methods)"
         (persistent-action . (lambda (candidate)
                                (let ((module-name (plcmp-get-current-module-name)))
                                  (plcmp-open-doc module-name)
-                                 (plcmp-re-search-forward-fontify (regexp-quote candidate)))))
-        )))
+                                 (plcmp-re-search-forward-fontify (regexp-quote candidate))))))))
 
 
 ;; plcmp-using-modules -> sources
@@ -1793,7 +1828,7 @@ otherwise
 ;;; Mode
 ;;; %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-(define-minor-mode perl-completion-mode "" nil " PLCompletion" plcmp-mode-map
+(define-minor-mode perl-completion-mode "" nil plcmp-default-lighter plcmp-mode-map
   (or plcmp-installed-modules
       (plcmp-with-set-perl5-lib
        (plcmp--installed-modules-asynchronously))))
@@ -1819,7 +1854,8 @@ otherwise
                           with ret
                           for w in words
                           when (and (stringp w)
-                                    (string-match (concat "^" ac-target) w))
+                                    (string-match (concat "^" ac-target) w)
+                                    (not (string= ac-target w)))
                           do (progn (push w ret)
                                     (incf count)
                                     (when (= count plcmp-ac-candidates-limit)
@@ -1861,12 +1897,14 @@ otherwise
     (expectations
       (desc "plcmp-get-face-words")
       (expect nil
-        (let ((b (get-buffer-create "*plcmp-test*")))
+        (let ((b (get-buffer-create "*plcmp-test*"))
+              (cperl-mode-hook nil))
           (with-current-buffer b
             (cperl-mode)
             (plcmp-get-face-words))))
       (expect "$test"
-        (let ((b (get-buffer-create "*plcmp-test*")))
+        (let ((b (get-buffer-create "*plcmp-test*"))
+              (cperl-mode-hook nil))
           (with-current-buffer b
             (erase-buffer)
             (insert "my $test = 'hoge';\n")
@@ -1916,6 +1954,13 @@ otherwise
       (expect nil
         (stub plcmp-get-current-directory => "")
         (plcmp--get-lib-path))
+
+      (desc "plcmp--get-lib-path-list-liberal")
+      (expect (mapcar 'file-relative-name '("~/c/remedie/extlib" "~/c/remedie/lib"))
+        (stub plcmp-get-current-directory => "~/c/remedie/bin/")
+        (stub file-exists-p => t)
+        (mapcar 'file-relative-name  (plcmp--get-lib-path-list-liberal)))
+
       (desc "plcmp-extra-using-modules")
       (expect '("LWP::UserAgent")
         (stub plcmp--get-using-modules-uses-and-requires => nil)
