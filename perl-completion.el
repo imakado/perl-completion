@@ -1842,6 +1842,9 @@ otherwise
 (defvar ac-source-perl-completion
   '((candidates . plcmp-ac-candidates)))
 
+(defvar ac-source-perl-completion-patial
+  '((candidates . plcmp-ac-candidates-patial)))
+
 (defun plcmp-ac-candidates ()
   (plcmp-ignore-errors
    (when (and (eq major-mode 'cperl-mode)
@@ -1887,6 +1890,29 @@ otherwise
 (defun plcmp-ac-methods ()
   (loop for module-name in plcmp-using-modules
         append (assoc-default module-name plcmp-module-methods-alist)))
+
+;;; patial
+(defun plcmp-ac-candidates-patial ()
+  (plcmp-ignore-errors
+   (when (and (eq major-mode 'cperl-mode)
+              (boundp 'perl-completion-mode)
+              perl-completion-mode)
+     (plcmp-initialize-variables)
+     (let ((words (plcmp-ac-make-cands)))
+       (plcmp-log "plcmp-ac-candidates words: %S" words)
+       (let ((cands (loop with count = 0
+                          with ret
+                          for w in words
+                          when (and (stringp w)
+                                    (string-match ac-target w)
+                                    (not (string= ac-target w)))
+                          do (progn (push w ret)
+                                    (incf count)
+                                    (when (= count plcmp-ac-candidates-limit)
+                                      (return (nreverse ret))))
+                          finally return (nreverse ret))))
+         (prog1 cands
+           (plcmp-log "plcmp-ac-candidates return: %s" cands)))))))
 
 ;;;; %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 ;;;; Test
