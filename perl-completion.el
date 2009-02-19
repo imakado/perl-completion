@@ -1929,10 +1929,11 @@ otherwise
   ;; get module name at point
   ;; Net::CI`!!'DR::MobileJP
   ;; `ffap-file-at-point' returns CIDR
-  (let ((module (thing-at-point 'symbol)))
-    (ignore-errors
-      (and (plcmp-module-p module)
-           (plcmp-get-module-file-path module)))))
+  (unless (plcmp-tramp-p)
+    (let ((module (thing-at-point 'symbol)))
+      (ignore-errors
+        (and (plcmp-module-p module)
+             (plcmp-get-module-file-path module))))))
 
 ;;;; %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 ;;;; Test
@@ -2029,7 +2030,17 @@ otherwise
         (let ((ls '("strict" "LWP::UserAgent"))
               (plcmp-module-filter-list '("strict" "warning")))
           (plcmp--using-modules-filter ls)))
-        
+      (desc "plcmp-ffap-perl tramp")
+      (expect "called"
+        (stub plcmp-get-module-file-path => "called")
+        (stub plcmp-tramp-p => nil)
+        (stub thing-at-point => "Some::Module")
+        (plcmp-ffap-perl "dummy"))
+      (expect nil
+        (stub plcmp-get-module-file-path => "called")
+        (stub plcmp-tramp-p => t)
+        (stub thing-at-point => "Some::Module")
+        (plcmp-ffap-perl "dummy"))
       )))
 
 (provide 'perl-completion)
