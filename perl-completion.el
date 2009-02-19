@@ -38,6 +38,8 @@
 (require 'cperl-mode)
 (require 'dabbrev)
 (require 'rx)
+(require 'regexp-opt)
+(require 'ffap)
 
 
 ;;; customize-variables
@@ -133,7 +135,7 @@ letでダイナミックにバインドしているので実行後に元の値�
 
 
 ;;; variables
-(defvar plcmp-version 1.01)
+(defvar plcmp-version 1.02)
 
 (defvar plcmp-default-lighter  " PLCompletion")
 
@@ -1775,6 +1777,8 @@ otherwise
       (add-to-list 'plcmp--PERL5LIB-directories dir)
       (message "added %s to PERL5LIB" dir))))
 
+
+
 ;;;; %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 ;;;; Anything commands
 ;;;; %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -1913,6 +1917,22 @@ otherwise
                           finally return (nreverse ret))))
          (prog1 cands
            (plcmp-log "plcmp-ac-candidates return: %s" cands)))))))
+
+
+;;;; %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+;;;; Extend find-file
+;;;; %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+(add-to-list 'ffap-alist
+             '(cperl-mode . plcmp-ffap-perl))
+
+(defun plcmp-ffap-perl (module)
+  ;; get module name at point
+  ;; Net::CI`!!'DR::MobileJP
+  ;; `ffap-file-at-point' returns CIDR
+  (let ((module (thing-at-point 'symbol)))
+    (ignore-errors
+      (and (plcmp-module-p module)
+           (plcmp-get-module-file-path module)))))
 
 ;;;; %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 ;;;; Test
