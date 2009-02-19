@@ -135,7 +135,7 @@ letでダイナミックにバインドしているので実行後に元の値�
 
 
 ;;; variables
-(defvar plcmp-version 1.02)
+(defvar plcmp-version 1.03)
 
 (defvar plcmp-default-lighter  " PLCompletion")
 
