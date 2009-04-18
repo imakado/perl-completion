@@ -24,6 +24,44 @@
 ;;; Commentary:
 ;; Tested on Emacs 22
 
+;;; Commands:
+;;
+;; Below are complete command list:
+;;
+;;  `plcmp-cmd-set-additional-lib-directory'
+;;    ask directory, then set directory to `plcmp--PERL5LIB-directories'
+;;  `perl-completion-mode'
+;;    
+;;
+;;; Customizable Options:
+;;
+;; Below are customizable option list:
+;;
+;;  `plcmp-lib-directory-re'
+;;    補完候補収得時に自動的に 環境変数 PERL5LIB に追加するディレクトリを決めるために使われるregexp
+;;    default = "lib/"
+;;  `plcmp-use-keymap'
+;;    Non-nil means to use `plcmp-mode-map'
+;;    default = t
+;;  `plcmp-extra-using-modules'
+;;    list of string or alist
+;;    default = nil
+;;  `plcmp-method-inspecter'
+;;    Detect how to get methods. 
+;;    default = nil
+;;  `plcmp-perl-buffer-re'
+;;    Perlバッファとして扱うファイル名にマッチするregexp
+;;    default = "\\.[pP][lmLM]$"
+;;  `plcmp-other-perl-buffer-limit-number'
+;;    補完対象にする他のperlバッファの最大数
+;;    default = 30
+;;  `plcmp-module-filter-list'
+;;    補完対象に含めないモジュール名のリスト
+;;    default = (quote ("strict" "warning"))
+;;  `plcmp-additional-PERL5LIB-directories'
+;;    補完候補収得時に 環境変数 PERL5LIB に動的に追加されるディレクトリ文字列のリスト.
+;;    default = nil
+
 ;; to customize
 ;; M-x customize-group RET perl-completion RET
 
@@ -1934,6 +1972,21 @@ otherwise
       (ignore-errors
         (and (plcmp-module-p module)
              (plcmp-get-module-file-path module))))))
+
+
+;;;; %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+;;;; Integration with anything-show-completion
+;;;; %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+(when (require 'anything-show-completion nil t)
+  (dolist (f '(plcmp-cmd-smart-complete
+               plcmp-cmd-complete-all
+               plcmp-cmd-complete-methods
+               plcmp-cmd-complete-hashes
+               plcmp-cmd-complete-functions
+               plcmp-cmd-complete-variables
+               plcmp-cmd-complete-modules
+               plcmp-cmd-complete-arrays))
+    (use-anything-show-completion f '(length plcmp-real-initial-input))))
 
 ;;;; %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 ;;;; Test
