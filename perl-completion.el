@@ -1982,6 +1982,8 @@ otherwise
 
 ;; difference is perl-completion doesn't use "find" command for portability
 ;; Prefix: plcmp-pr-
+(defvar plcmp-pr-default-directory-filter-regexps nil)
+
 (defvar plcmp-pr-default-filter-regexps
   '("\\.pm$" "\\.t$" "\\.pl$" "\\.PL$"))
 
@@ -2023,49 +2025,66 @@ otherwise
             finally return cur-dir))))
 
 
-(defun plcmp-pr-any-match (regexp-or-regexps file-name)
-  (let ((regexps (if (consp regexp-or-regexps) regexp-or-regexps (list regexp-or-regexps))))
-    (some
-     (lambda (re)
-       (string-match re file-name))
-     regexp-or-regexps)))
+(defsubst plcmp-pr-any-match (regexp-or-regexps file-name)
+  (when regexp-or-regexps
+    (let ((regexps (if (consp regexp-or-regexps) regexp-or-regexps (list regexp-or-regexps))))
+      (some
+       (lambda (re)
+         (string-match re file-name))
+       regexps))))
 
-(defun* plcmp-directory-files-recursively (regexp &optional directory type (filter-regexp ".*"))
+(defun* plcmp-pr-directory-files-recursively (regexp &optional directory type (dir-filter-regexp nil))
   (let* ((directory (or directory default-directory))
          (predfunc (case type
                      (dir 'file-directory-p)
                      (file 'file-regular-p)
                      (otherwise 'identity)))
-         (files (delete-if
-                 (lambda (s)
-                   (string-match (rx bol ".")
-                                 (file-name-nondirectory s)))
-                 (directory-files directory t nil t))))
+         (files (directory-files directory t "^[^.]" t)))
     (loop for file in files
           when (and (funcall predfunc file)
                     (plcmp-pr-any-match regexp (file-name-nondirectory file)))
           collect file into ret
-          when (file-directory-p file)
-          nconc (plcmp-directory-files-recursively regexp file type) into ret
-          finally return ret)))
+          when (and (file-directory-p file)
+                    (not (plcmp-pr-any-match dir-filter-regexp file)))
+          nconc (plcmp-pr-directory-files-recursively regexp file type dir-filter-regexp) into ret
+          finally return (nreverse ret))))
 
 
+(defun plcmp-pr-truncate-file-name (root-dir files)
+  (let* ((root-dir (replace-regexp-in-string "/$" "" root-dir))
+         (re (concat "^" root-dir "\\(.*\\)$")))
+    (let* ((truncate (lambda (f)
+                       (if (string-match re f)
+                         (match-string-no-properties 1 f)
+                         f))))
+      (mapcar truncate files))))
+
+
+(defvar plcmp-pr-root-directory "")
 (defun plcmp-pr-get-project-files ()
   (let* ((root-dir (plcmp-pr-get-root-directory)))
     (when root-dir
-      (plcmp-directory-files-recursively plcmp-pr-default-filter-regexps root-dir 'identity))))
+      (setq plcmp-pr-root-directory root-dir)
+      (let* ((files (plcmp-pr-directory-files-recursively plcmp-pr-default-filter-regexps root-dir 'identity plcmp-pr-default-directory-filter-regexps))
+             (files (plcmp-pr-truncate-file-name root-dir files)))
+        (prog1 files
+          (kill-new (format "%S" files)))))))
+
+(defun plcmp-pr-expand-file (file)
+  (let ((root-dir (replace-regexp-in-string "/$" "" plcmp-pr-root-directory)))
+    (concat root-dir file)))
 
 
 (defun plcmp-cmd-project-files ()
   (interactive)
-  (anything 
+  (anything
    '(
      ((name . "Project files")
       (init . plcmp-pr-project-files-init)
       (candidates-in-buffer)
       (action . (("Find file" .
                   (lambda (c)
-                    (find-file c)))))
+                    (find-file (plcmp-pr-expand-file c))))))
       ))
    nil "Project files: "))
 
@@ -2073,23 +2092,13 @@ otherwise
   (let ((files (plcmp-pr-get-project-files))
         (cands-buf (anything-candidate-buffer 'local)))
     (cond
-     (cands
+     (files
       (with-current-buffer cands-buf
         (insert (mapconcat 'identity files "\n"))))
      (t
       (message "no project files.")))))
-    
 
 ;; :relevant-files
-
-;;; T
-;; (with-current-buffer "URI.pm"
-;;   (plcmp-pr-get-project-files))
-
-
-
-
-
 
 
 ;;;; %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
