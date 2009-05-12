@@ -173,7 +173,7 @@ letでダイナミックにバインドしているので実行後に元の値�
 
 
 ;;; variables
-(defvar plcmp-version 1.03)
+(defvar plcmp-version 1.10)
 
 (defvar plcmp-default-lighter  " PLCompletion")
 
@@ -270,6 +270,7 @@ letでダイナミックにバインドしているので実行後に元の値�
 
       ;; other
       (define-key map (kbd "C-c c") 'plcmp-cmd-clear-all-caches)
+      (define-key map (kbd "C-c C-f") 'plcmp-cmd-project-files)
       (define-key map (kbd "C-c C-c s") 'plcmp-cmd-show-environment)
       (define-key map (kbd "C-c C-c u") 'plcmp-cmd-update-check)
       (define-key map (kbd "C-c C-c d") 'plcmp-cmd-set-additional-lib-directory))
@@ -1972,6 +1973,123 @@ otherwise
       (ignore-errors
         (and (plcmp-module-p module)
              (plcmp-get-module-file-path module))))))
+
+
+;;;; %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+;;;; Project Resources
+;;;; %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+;; idea from http://trac.codecheck.in/share/browser/lang/elisp/anything-find-project-resources/trunk/anything-find-project-resources.el
+
+;; difference is perl-completion doesn't use "find" command for portability
+;; Prefix: plcmp-pr-
+(defvar plcmp-pr-default-filter-regexps
+  '("\\.pm$" "\\.t$" "\\.pl$" "\\.PL$"))
+
+(defvar plcmp-pr-project-root-files
+    '("build.xml" "prj.el" ".project" "pom.xml"
+      "Makefile" "configure" "Rakefile" "Info.plist"
+      "NAnt.build" "Makefile.PL"
+      "xpi"
+      "Makefile.SH"
+      "Build.PL"
+      ))
+
+(defun plcmp-pr-root-directory-p (root-files files)
+  (some
+   (lambda (file)
+     (find file
+           root-files
+           :test 'string=))
+   files))
+
+(defvar plcmp-pr-root-detector 
+  (lambda (current-dir)
+    (let* ((current-dir (expand-file-name current-dir))
+           (root-dir (plcmp-pr-root-directory-p plcmp-pr-project-root-files (directory-files current-dir))))
+      (when root-dir
+        root-dir))))
+
+(defvar plcmp-pr-get-root-directory-limit 10)
+(defun plcmp-pr-get-root-directory ()
+  (let ((cur-dir (plcmp-get-current-directory)))
+    (ignore-errors
+      (loop with count = 0
+            until (funcall plcmp-pr-root-detector cur-dir)
+            if (= count anything-etags-tag-file-search-limit)
+            do (return nil)
+            else
+            do (progn (incf count)
+                      (setq cur-dir (expand-file-name (concat cur-dir "../"))))
+            finally return cur-dir))))
+
+
+(defun plcmp-pr-any-match (regexp-or-regexps file-name)
+  (let ((regexps (if (consp regexp-or-regexps) regexp-or-regexps (list regexp-or-regexps))))
+    (some
+     (lambda (re)
+       (string-match re file-name))
+     regexp-or-regexps)))
+
+(defun* plcmp-directory-files-recursively (regexp &optional directory type (filter-regexp ".*"))
+  (let* ((directory (or directory default-directory))
+         (predfunc (case type
+                     (dir 'file-directory-p)
+                     (file 'file-regular-p)
+                     (otherwise 'identity)))
+         (files (delete-if
+                 (lambda (s)
+                   (string-match (rx bol ".")
+                                 (file-name-nondirectory s)))
+                 (directory-files directory t nil t))))
+    (loop for file in files
+          when (and (funcall predfunc file)
+                    (plcmp-pr-any-match regexp (file-name-nondirectory file)))
+          collect file into ret
+          when (file-directory-p file)
+          nconc (plcmp-directory-files-recursively regexp file type) into ret
+          finally return ret)))
+
+
+(defun plcmp-pr-get-project-files ()
+  (let* ((root-dir (plcmp-pr-get-root-directory)))
+    (when root-dir
+      (plcmp-directory-files-recursively plcmp-pr-default-filter-regexps root-dir 'identity))))
+
+
+(defun plcmp-cmd-project-files ()
+  (interactive)
+  (anything 
+   '(
+     ((name . "Project files")
+      (init . plcmp-pr-project-files-init)
+      (candidates-in-buffer)
+      (action . (("Find file" .
+                  (lambda (c)
+                    (find-file c)))))
+      ))
+   nil "Project files: "))
+
+(defun plcmp-pr-project-files-init ()
+  (let ((files (plcmp-pr-get-project-files))
+        (cands-buf (anything-candidate-buffer 'local)))
+    (cond
+     (cands
+      (with-current-buffer cands-buf
+        (insert (mapconcat 'identity files "\n"))))
+     (t
+      (message "no project files.")))))
+    
+
+;; :relevant-files
+
+;;; T
+;; (with-current-buffer "URI.pm"
+;;   (plcmp-pr-get-project-files))
+
+
+
+
+
 
 
 ;;;; %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
