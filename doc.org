@@ -1,18 +1,25 @@
 ** perl-completion.el document
 *** What is perl-completion.el
-    perl-completion.el - supports editting perl programs on Emacs.
+    perl-completion.el - minor mode provides useful features for editing perl codes
 
-    perl-completion.el is a anything application http://www.emacswiki.org/emacs/AnythingApplications .
-    uses anything interfaces to select and narrow candidates.
+    perl-completion.el is a minor mode which provides several useful features such as variable/method/module code completion, easy perldoc browsing, and more described below in your perl-mode.
 
-    this way is more powerful than normal Emacs TabCompletion.
-
+    This module is one of anything application http://www.emacswiki.org/emacs/AnythingApplications .
+    So that means anything.el is required to run this elisp. please install anyhing.el first unless you already have.
 
 **** Screen cast is available
      My English is not so good, so i made ScreenCast.
 
 *** Installation
+**** Tradisional way
     drop perl-completion.el into a directory in your `load-path' and byte-compile it.
+
+**** with install-elisp.el
+    If you have install-elisp.el, you can install perl-completion.el very easily.
+
+    Run code showed below to install perl-completion.el
+
+        (install-elisp "http://..../perl-completion.el")
 
 **** Emacs version
      perl-completion.el needs emacs version higher than 22.
@@ -24,16 +31,17 @@
      -anything-match-plugin.el http://www.emacswiki.org/emacs/download/anything-match-plugin.el
 
      perl-completion.el does not really depend on anything-match-plugin.el.
-     but anything.el becomes more powerfull with anything-match-plugin.el.
-     So I strongly recommend you install anything-match-plugin.el.
 
-     With Lisp:anything-match-plugin.el you can narrow candidates multiple times! -- from http://www.emacswiki.org/emacs/AnythingApplications
+     But I strongly recommend you to install anything-match-plugin.el
+     because anything.el becomes more powerfull with anything-match-plugin.el.
+
+     Lisp:anything-match-plugin.el enables you to narrow select candidates by multiple words or regexp! -- from http://www.emacswiki.org/emacs/AnythingApplications
 
 *** Configuration
 
 **** Default configuration
      perl-completion.el is minor-mode for cperl-mode.
-     so, typically load and setting in `cperl-mode-hook'.
+     so, settings (loading and configs) are typically written in `cperl-mode-hook'.
 
      below are configuration sample.
      put these lines into your .emacs file (or something like .emacs file)
@@ -92,7 +100,7 @@
 
 ***** [C-c C-c a] plcmp-cmd-complete-all
       invoke anything with all completion sources.
-      difference bet ween this command and `plcmp-cmd-smart-complete'
+      difference between this command and `plcmp-cmd-smart-complete'
       is this command doesn't sort candidates smartly.
 
 ***** [C-RET] plcmp-cmd-smart-complete
