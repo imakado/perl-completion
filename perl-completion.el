@@ -1974,6 +1974,93 @@ otherwise
         (and (plcmp-module-p module)
              (plcmp-get-module-file-path module))))))
 
+;;;; %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+;;;; Utils for editting perl
+;;;; %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+(defcustom plcmp-coding-system nil
+  "if this variable's value is non-nil,
+value is let-bound for `coding-system-for-read' and `coding-system-for-write'.
+must be one of coding-system."
+  :type 'symbol
+  :group 'perl-completion)
+
+(defvar plcmp-eval-output-buf-name "*perl output*")
+
+(defmacro plcmp-with-specify-coding-system (&rest body)
+  `(let ((coding-system-for-write plcmp-coding-system)
+         (coding-system-for-read plcmp-coding-system))
+     (progn ,@body)))
+(def-edebug-spec plcmp-with-specify-coding-system t)
+
+
+(defun* plcmp-async-do
+    (&key command args buffer-name
+          (callback 'identity)
+          (errorback (lambda() (message (buffer-string)))))
+  (plcmp-with-specify-coding-system
+   (lexical-let ((buf (with-current-buffer (get-buffer-create buffer-name)
+                        (erase-buffer)
+                        (current-buffer)))
+                 (callback callback)
+                 (errorback errorback))
+     (lexical-let
+         ((sentinel (lambda (proc event)
+                      (cond ((and (string= event "finished\n")
+                                  (= (process-exit-status proc) 0))
+                             (with-current-buffer buf
+                               (funcall callback)))
+                            ((and (string= event "finished\n")
+                                  (/= (process-exit-status proc) 0))
+                             (with-current-buffer buf
+                               (funcall errorback)))
+                            (t
+                             (funcall errorback))))))
+       (set-process-sentinel (apply 'start-process command buf command args) sentinel)))))
+
+
+(defun* plcmp--eval-async (&key callback perl-code)
+  (assert (and (functionp callback) (stringp perl-code)))
+  (lexical-let ((buf-name plcmp-eval-output-buf-name)
+                (perl-code perl-code))
+    (plcmp-async-do
+     :buffer-name buf-name
+     :command (plcmp-get-perl-command)
+     :args `("-e"
+             ,perl-code)
+     :callback callback
+     :errorback (lambda ()
+                  (switch-to-buffer buf-name))
+     )))
+
+(defun plcmp-cmd-eval-buffer ()
+  (interactive)
+  (plcmp--eval-async
+   :callback (lambda ()
+               (save-selected-window
+                 (pop-to-buffer plcmp-eval-output-buf-name)
+                 (goto-char (point-min))))
+   :perl-code (buffer-string)))
+
+(defun plcmp-cmd-eval-buffer-and-go ()
+  (interactive)
+  (plcmp--eval-async
+   :callback (lambda ()
+               (let ((b plcmp-eval-output-buf-name))
+                 (with-current-buffer b (goto-char (point-min)))
+                 (switch-to-buffer b)))
+   :perl-code (buffer-string)))
+
+(defun plcmp-cmd-eval-on-region (beg end)
+  "Run selected region as Perl code asynchronously"
+  (interactive "r")
+  (plcmp--eval-async
+   :callback (lambda ()
+               (save-selected-window
+                 (pop-to-buffer plcmp-eval-output-buf-name)))
+   :perl-code (buffer-substring-no-properties
+               beg end)))
+
+
 
 ;;;; %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 ;;;; Project Resources
