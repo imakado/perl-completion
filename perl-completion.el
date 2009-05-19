@@ -1,7 +1,8 @@
-;;;  -*- coding: utf-8; mode: emacs-lisp; -*-
-;;; perl-completion.el
+;;; perl-completion.el - minor mode provides useful features for editing perl codes
 
-;; Author: Kenji.Imakado <ken.imakado@gmail.com>
+;; Copyright (c) 2009 by KAYAC Inc.
+
+;; Author: IMAKADO <ken.imakado@gmail.com>
 ;; Keywords: perl
 
 ;; This file is free software; you can redistribute it and/or modify
@@ -23,52 +24,205 @@
 
 ;;; Commentary:
 ;; Tested on Emacs 22
+;;
+;; Thanks to rubikitch for integration with anything-show-completion.
+
 
 ;;; Commands:
 ;;
 ;; Below are complete command list:
 ;;
-;;  `plcmp-cmd-set-additional-lib-directory'
-;;    ask directory, then set directory to `plcmp--PERL5LIB-directories'
-;;  `perl-completion-mode'
-;;    
+;; -Completion Commands-
 ;;
-;;; Customizable Options:
-;;
-;; Below are customizable option list:
-;;
-;;  `plcmp-lib-directory-re'
-;;    補完候補収得時に自動的に 環境変数 PERL5LIB に追加するディレクトリを決めるために使われるregexp
-;;    default = "lib/"
-;;  `plcmp-use-keymap'
-;;    Non-nil means to use `plcmp-mode-map'
-;;    default = t
-;;  `plcmp-extra-using-modules'
-;;    list of string or alist
-;;    default = nil
-;;  `plcmp-method-inspecter'
-;;    Detect how to get methods. 
-;;    default = nil
-;;  `plcmp-perl-buffer-re'
-;;    Perlバッファとして扱うファイル名にマッチするregexp
-;;    default = "\\.[pP][lmLM]$"
-;;  `plcmp-other-perl-buffer-limit-number'
-;;    補完対象にする他のperlバッファの最大数
-;;    default = 30
-;;  `plcmp-module-filter-list'
-;;    補完対象に含めないモジュール名のリスト
-;;    default = (quote ("strict" "warning"))
-;;  `plcmp-additional-PERL5LIB-directories'
-;;    補完候補収得時に 環境変数 PERL5LIB に動的に追加されるディレクトリ文字列のリスト.
-;;    default = nil
+;; [C-c C-c a] `plcmp-cmd-complete-all'
+;;       invoke anything with all completion sources.
+;;       difference between this command and `plcmp-cmd-smart-complete'
+;;       is this command doesn't sort candidates smartly.
 
-;; to customize
+;; [C-RET] `plcmp-cmd-smart-complete'
+;; [<C-return>] `plcmp-cmd-smart-complete'
+;; [M-TAB] `plcmp-cmd-smart-complete'
+;;       complete all completion sources.
+;;       completions are smartly sorted.
+
+;;       e.x,
+;;       when invoke command context like: (cursor is `!!')
+
+;;      use LWP::UserAgent;
+;;      my $ua = LWP::UserAgent->new;
+;;      $ua->`!!'
+
+;;       LWP::UserAgent's methods are appered at top of candidates.
+
+;;       this is the main command of perl-completion.el!!.
+
+;; [C-c v] `plcmp-cmd-complete-variables'
+;;       invoke anything with only variables completion source.
+
+;; [C-c a] `plcmp-cmd-complete-arrays'
+;;       invoke anything with only array completion source.
+
+;; [C-c h] `plcmp-cmd-complete-hashes'
+;;       invoke anything with only hash completion source.
+
+;; [C-c f] `plcmp-cmd-complete-functions'
+;;       invoke anything with only function completion source.
+
+;; [C-c m] `plcmp-cmd-complete-methods'
+;;       invoke anything with only using module's methods completion source.
+
+;; [C-c i] `plcmp-cmd-complete-modules'
+;;       invoke anything with only installed modules completion source.
+
+
+;; -Documents support commands-
+
+;; [C-c d] `plcmp-cmd-show-doc'
+;;       invoke anything with installed modules and man pages about perl.
+
+;;       default action is "Show doc" that open selected condidate's document.
+
+;;       e.x,
+;;       [module]
+;;       If selected DBIx::Class::ResultSet, open perldoc.
+;;       [manpage]
+;;       If selected perlop, open manpage using `woman'
+
+;;       press TAB to select other Actions.
+
+
+;; [C-c s] `plcmp-cmd-show-doc-at-point'
+;;       same as `plcmp-cmd-show-doc'.
+;;       only difference, word at point is used as initial-pattern.
+
+
+;; -Other Commands-
+
+;; [C-c c] `plcmp-cmd-clear-all-caches'
+;;       remove all caches
+;;       rebuild installed modules list asynchronously. as soon as called this command.
+;;       caches are,
+;;       - installed modules
+;;       - methods
+;;       - perl buffers last modified time. (used detect buffer is changed since last completion command is invoked
+;;                                           other-perl-buffer-source doesn't try to get completions non modified buffer).
+
+;;       this command usually used, when you install new module from something like CPAN after once perl-completion-mode is on.
+
+;;       Internally, this command sets these variables to `nil'.
+;;       -`plcmp-other-perl-buffers-cache-hash'
+;;       -`plcmp-module-methods-alist'
+;;       -`plcmp-installed-modules'
+
+
+;; [C-c C-c s] `plcmp-cmd-show-environment'
+;;       print infomations to *perl-completion show environment* buffer
+;;       environment,
+;;       perl-completion's customize variables,
+;;       perl-completion's commands and where bound to and value of environment PERL5LIB.
+
+;;       this command is good for debugging.
+
+;; [C-c M] `plcmp-cmd-menu'
+;;       show perl-completion's menu.
+
+;;       this quite useful when before you remember perl-completion's keybinds.
+
+
+;; -Commands support perl programing-
+
+;; `plcmp-cmd-eval-buffer'
+;;       Run current buffer string as Perl code asynchronously.
+;;       when finished, popup result buffer.
+;;       the result buffer is named *perl output*.
+
+;; `plcmp-cmd-eval-on-region'
+;;       Run selected region as Perl code asynchronously.
+;;       when finished, popup result buffer.
+;;       the result buffer is named *perl output*.
+
+;;       If run perl process is exit with nonzero status, using `switch-to-buffer' instead of `pop-to-buffer'
+
+
+;; Customize Variables
+
+;; `plcmp-lib-directory-re'
+;;      regexp to detect directory that automatically added to PERL5LIB when build completions.
+
+;;      e.x,
+;;      If you are editting file at "~/dev/SomeModule/lib/SomeModule/Hoge.pm",
+;;      "~/dev/SomeModule/lib/" is added to PERL5LIB when invoke completion commands.
+
+;;      default value is "lib/"
+
+;; `plcmp-use-keymap'
+;;      If this value is nil,
+;;      perl-completion-mode doesn't use own key-map.
+
+;;      it is useful if you want to use own keybind,
+;;      or don't like default keybinds.
+
+;;      Note, keymap is defined at library loading phase.
+;;      so this variables's value should be set before `require'.
+
+;;      e.x,
+;;      ;; ok, dont use default keybinds.
+;;      (setq plcmp-use-keymap nil)
+;;      (require 'perl-completion)
+
+
+;;      ;; NG when `plcmp-use-keymap' is set, plcmp-mode-map is defined already.
+;;      (require 'perl-completion)
+;;      (setq plcmp-use-keymap nil)
+
+
+
+;; `plcmp-extra-using-modules'
+;;      list of String or Alist
+
+;;      If value is String(module name),
+;;      module name is always appear in candidates.
+
+;;      If value is Alist ("module-name" . "extra-module-name"),
+;;      and module-name is using in current buffer,
+;;      extra-module-name's methods are appear in candidates.
+
+;;      e.x,
+;;      (setq plcmp-extra-using-modules '("DBIx::Class::ResultSet"))
+;;      (setq plcmp-extra-using-modules '(("LWP::UserAgent" . "HTTP::Response")))
+;;      ;; also can both of them
+;;      (setq plcmp-extra-using-modules '("DBIx::Class::ResultSet" ("LWP::UserAgent" . "HTTP::Response")))
+
+;; `plcmp-perl-buffer-re'
+;;      Regexp
+;;      To Detect buffer is perl buffer or not.
+;;      default value is "\\.[pP][lmLM]$"
+
+;; `plcmp-other-perl-buffer-limit-number'
+;;      Number
+;;      how many buffers get buffer words `plcmp-get-sources-other-perl-buffers-words'.  Fixme
+;;      default value is 30
+
+;; `plcmp-module-filter-list'
+;;      list of String(module name)
+;;      module is not appear in method completion list.
+;;      default value is '("strict" "warning")
+
+;; `plcmp-additional-PERL5LIB-directories'
+;;      list of String(directory)
+;;      directory is added to PERL5LIB when invoke completion commands.
+
+;; `plcmp-coding-system'
+;;      If this value is not nil,
+;;      value is bind to `coding-system-for-read' and `coding-system-for-write' temporary around these commands:
+;;      `plcmp-cmd-eval-buffer'
+;;      `plcmp-cmd-eval-buffer-and-go'
+;;      `plcmp-cmd-eval-on-region'
+
+;; To customize
 ;; M-x customize-group RET perl-completion RET
 
 
-;; TODO:
-;; plcmp-cmd-show-environment
-;; plcmp-other-perl-buffer-limit-number can be nil
 
 ;;;code:
 (require 'cl)
@@ -86,23 +240,51 @@
   :group 'perl-completion)
 
 (defcustom plcmp-lib-directory-re "lib/"
-  "補完候補収得時に自動的に 環境変数 PERL5LIB に追加するディレクトリを決めるために使われるregexp
-編集中のfileから再帰的に親ディレクトリをたどっていき,この変数の値にマッチするディレクトリを見つけると 環境変数 PERL5LIB に追加する.
+  "regexp to detect directory that automatically added to PERL5LIB when build completions.
+e.x,
+If you are editting file at \"~/dev/SomeModule/lib/SomeModule/Hoge.pm\",
+\"~/dev/SomeModule/lib/\" is added to PERL5LIB when invoke completion commands.
 
-デフォルトの値は \"lib/\" で,これは一般的なプロジェクトのディレクトリ構成の場合,うまく動く.
-例,  ~/c/project/app/hoge/huga.pl を編集中の場合 ~/c/project/lib/ を 環境変数 PERL5LIBに自動的に追加して補完候補を収得する.
-
-注意!! インストールされているモジュール,メソッド名等はcacheされているため,
-最収得したい場合は command `plcmp-cmd-clear-all-caches'を使う必要がある."
+default value is \"lib/\""
   :type 'regexp
   :group 'perl-completion)
 
 (defcustom plcmp-use-keymap t
-  "Non-nil means to use `plcmp-mode-map'"
+  "If this value is nil,
+perl-completion-mode doesn't use own key-map.
+
+it is useful if you want to use own keybind,
+or don't like default keybinds.
+
+Note, keymap is defined at library loading phase.
+so this variables's value should be set before `require'.
+
+e.x,
+;; ok, dont use default keybinds.
+(setq plcmp-use-keymap nil)
+(require 'perl-completion)
+
+
+;; NG when `plcmp-use-keymap' is set, plcmp-mode-map is defined already.
+(require 'perl-completion)
+(setq plcmp-use-keymap nil)"
   :group 'perl-completion)
 
 (defcustom plcmp-extra-using-modules nil
-  "list of string or alist"
+  "list of String or Alist
+
+If value is String(module name),
+module name is always appear in candidates.
+
+If value is Alist (\"module-name\" . \"extra-module-name\"),
+and module-name is using in current buffer,
+extra-module-name's methods are appear in candidates.
+
+e.x,
+(setq plcmp-extra-using-modules '(\"DBIx::Class::ResultSet\"))
+(setq plcmp-extra-using-modules '((\"LWP::UserAgent\" . \"HTTP::Response\")))
+;; also can both of them
+(setq plcmp-extra-using-modules '(\"DBIx::Class::ResultSet\" (\"LWP::UserAgent\" . \"HTTP::Response\")))"
   :group 'perl-completion)
 
 (defcustom plcmp-method-inspecter nil
@@ -117,35 +299,30 @@ otherwise, try both"
   :group 'perl-completion)
 
 (defcustom plcmp-perl-buffer-re "\\.[pP][lmLM]$"
-  "Perlバッファとして扱うファイル名にマッチするregexp"
+  "Regexp
+To Detect buffer is perl buffer or not.
+default value is \"\\.[pP][lmLM]$\""
   :type 'regexp
   :group 'perl-completion)
 
 (defcustom plcmp-other-perl-buffer-limit-number 30
-  "補完対象にする他のperlバッファの最大数"
+  "Number
+how many buffers get buffer words `plcmp-get-sources-other-perl-buffers-words'.  Fixme
+default value is 30"
   :type 'number
   :group 'perl-completion)
 
 (defcustom plcmp-module-filter-list '("strict" "warning")
-  "補完対象に含めないモジュール名のリスト
-このリストに含まれているモジュールのメソッドは補完対象にならない"
+  "list of String(module name)
+module is not appear in method completion list.
+default value is '(\"strict\" \"warning\")"
   :type '(repeat (string :tag "Module name"))
   :group 'perl-completion)
 
 (defcustom plcmp-additional-PERL5LIB-directories nil
-  "補完候補収得時に 環境変数 PERL5LIB に動的に追加されるディレクトリ文字列のリスト.
+  "list of String(directory)
 
-特記事項として,編集中のバッファの上位のディレクトリに customize-variable `plcmp-lib-directory-re' にマッチするディレクトリが存在した場合,
-perl-completionはそのディレクトリを自動的に 環境変数 PERL5LIB に追加するのでこの変数に追加する必要はない.
-
-例として,
-customize-variable `plcmp-lib-directory-re' の値が \"lib/\",
-編集中のファイルが ~/c/test/app/hoge/huga.pl の場合,
-~/c/test/lib が存在すれば補完候補収得時に PERL5LIB に追加される.
-
- 
-正確には補完候補を収得する関数の実行中にコピーした `process-environment' の値に変更を加え,
-letでダイナミックにバインドしているので実行後に元の値に戻る(`process-environment'を直接変更するのではない)."
+directory is added to PERL5LIB when invoke completion commands."
   :type '(repeat (string :tag "perl lib directory"))
   :group 'perl-completion)
 
@@ -298,12 +475,11 @@ letでダイナミックにバインドしているので実行後に元の値�
 ;;       http://d.hatena.ne.jp/sun-basix/20080117/1200528765 (Japanese)
 
 (defvar plcmp--PERL5LIB-directories nil
-  "補完候補収得時に環境変数 PERL5LIB に動的に追加されるディレクトリ文字列のリストだが,
-この変数はコマンド `plcmp-cmd-set-additional-lib-directory' によって設定される内部変数なので,
-ユーザーがlispで直接変更してはならない.
+  "list of String(directory)
+directory is added to PERL5LIB when invoke completion command.
 
-ユーザーレベルで補完候補収得時に環境変数 PERL5LIBの値にディレクトリを追加したい場合は,
-customize-variable `plcmp-additional-PERL5LIB-directories' に設定する.")
+this variable is Internal.
+so should not change this variable.")
 
 
 (defun plcmp--get-lib-path ()
@@ -672,9 +848,10 @@ then execute BODY"
     (plcmp-collect-matches plcmp-perl-ident-re)))
 
 (defsubst plcmp--inspect-module-class-inspector (module-name)
-  "Class::Inspectorを使用してモジュールのメソッド調べる。
-モジュール名に使用でき-る文字以外が含まれていた場合はnilを返す
-return alist (module-name . list of methods)"
+  "Inspect module for getting methods.
+
+this function returns alist (module-name . list of methods)
+If MODULE-NAME is not valid, returns `nil'"
   (when (plcmp-module-p module-name)
     (let ((modules-str
            (shell-command-to-string
@@ -1540,8 +1717,10 @@ return buffer or nil unless process return 0"
    plcmp-completion-smart-complete-static-sources))
 
 (defsubst* plcmp-preceding-string (&optional (count 1))
-  "現在の位置からcount文字前方位置までの文字列を返す
-例外を出さない"
+  "Return before COUNT character preceding point as String.
+If COUNT is omitted, COUNT is set to 1.
+
+don't throw error evan if point is at beggning of buffer."
   (buffer-substring-no-properties
    (point)
    (condition-case nil
@@ -1677,7 +1856,7 @@ otherwise
 
 (defun plcmp-get-sources-for-complete-variables ()
   (append
-   (plcmp-get-sources-other-perl-buffers-variable)   
+   (plcmp-get-sources-other-perl-buffers-variable)
    plcmp-completion-variable-static-sources
    ))
 
@@ -1965,7 +2144,9 @@ otherwise
              '(cperl-mode . plcmp-ffap-perl))
 
 (defun plcmp-ffap-perl (module)
-  ;; get module name at point
+  ;; dont use argument MODULE
+  ;; because `ffap-file-at-point' returns wrong word.
+  ;; e.x, (cursor is `!!')
   ;; Net::CI`!!'DR::MobileJP
   ;; `ffap-file-at-point' returns CIDR
   (unless (plcmp-tramp-p)
@@ -2061,136 +2242,10 @@ must be one of coding-system."
                beg end)))
 
 
-
-;;;; %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-;;;; Project Resources
-;;;; %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-;; idea from http://trac.codecheck.in/share/browser/lang/elisp/anything-find-project-resources/trunk/anything-find-project-resources.el
-
-;; difference is perl-completion doesn't use "find" command for portability
-;; Prefix: plcmp-pr-
-(defvar plcmp-pr-default-directory-filter-regexps nil)
-
-(defvar plcmp-pr-default-filter-regexps
-  '("\\.pm$" "\\.t$" "\\.pl$" "\\.PL$"))
-
-(defvar plcmp-pr-project-root-files
-    '("build.xml" "prj.el" ".project" "pom.xml"
-      "Makefile" "configure" "Rakefile" "Info.plist"
-      "NAnt.build" "Makefile.PL"
-      "xpi"
-      "Makefile.SH"
-      "Build.PL"
-      ))
-
-(defun plcmp-pr-root-directory-p (root-files files)
-  (some
-   (lambda (file)
-     (find file
-           root-files
-           :test 'string=))
-   files))
-
-(defvar plcmp-pr-root-detector 
-  (lambda (current-dir)
-    (let* ((current-dir (expand-file-name current-dir))
-           (root-dir (plcmp-pr-root-directory-p plcmp-pr-project-root-files (directory-files current-dir))))
-      (when root-dir
-        root-dir))))
-
-(defvar plcmp-pr-get-root-directory-limit 10)
-(defun plcmp-pr-get-root-directory ()
-  (let ((cur-dir (plcmp-get-current-directory)))
-    (ignore-errors
-      (loop with count = 0
-            until (funcall plcmp-pr-root-detector cur-dir)
-            if (= count anything-etags-tag-file-search-limit)
-            do (return nil)
-            else
-            do (progn (incf count)
-                      (setq cur-dir (expand-file-name (concat cur-dir "../"))))
-            finally return cur-dir))))
-
-
-(defsubst plcmp-pr-any-match (regexp-or-regexps file-name)
-  (when regexp-or-regexps
-    (let ((regexps (if (consp regexp-or-regexps) regexp-or-regexps (list regexp-or-regexps))))
-      (some
-       (lambda (re)
-         (string-match re file-name))
-       regexps))))
-
-(defun* plcmp-pr-directory-files-recursively (regexp &optional directory type (dir-filter-regexp nil))
-  (let* ((directory (or directory default-directory))
-         (predfunc (case type
-                     (dir 'file-directory-p)
-                     (file 'file-regular-p)
-                     (otherwise 'identity)))
-         (files (directory-files directory t "^[^.]" t)))
-    (loop for file in files
-          when (and (funcall predfunc file)
-                    (plcmp-pr-any-match regexp (file-name-nondirectory file)))
-          collect file into ret
-          when (and (file-directory-p file)
-                    (not (plcmp-pr-any-match dir-filter-regexp file)))
-          nconc (plcmp-pr-directory-files-recursively regexp file type dir-filter-regexp) into ret
-          finally return (nreverse ret))))
-
-
-(defun plcmp-pr-truncate-file-name (root-dir files)
-  (let* ((root-dir (replace-regexp-in-string "/$" "" root-dir))
-         (re (concat "^" root-dir "\\(.*\\)$")))
-    (let* ((truncate (lambda (f)
-                       (if (string-match re f)
-                         (match-string-no-properties 1 f)
-                         f))))
-      (mapcar truncate files))))
-
-
-(defvar plcmp-pr-root-directory "")
-(defun plcmp-pr-get-project-files ()
-  (let* ((root-dir (plcmp-pr-get-root-directory)))
-    (when root-dir
-      (setq plcmp-pr-root-directory root-dir)
-      (let* ((files (plcmp-pr-directory-files-recursively plcmp-pr-default-filter-regexps root-dir 'identity plcmp-pr-default-directory-filter-regexps))
-             (files (plcmp-pr-truncate-file-name root-dir files)))
-        (prog1 files
-          (kill-new (format "%S" files)))))))
-
-(defun plcmp-pr-expand-file (file)
-  (let ((root-dir (replace-regexp-in-string "/$" "" plcmp-pr-root-directory)))
-    (concat root-dir file)))
-
-
-(defun plcmp-cmd-project-files ()
-  (interactive)
-  (anything
-   '(
-     ((name . "Project files")
-      (init . plcmp-pr-project-files-init)
-      (candidates-in-buffer)
-      (action . (("Find file" .
-                  (lambda (c)
-                    (find-file (plcmp-pr-expand-file c))))))
-      ))
-   nil "Project files: "))
-
-(defun plcmp-pr-project-files-init ()
-  (let ((files (plcmp-pr-get-project-files))
-        (cands-buf (anything-candidate-buffer 'local)))
-    (cond
-     (files
-      (with-current-buffer cands-buf
-        (insert (mapconcat 'identity files "\n"))))
-     (t
-      (message "no project files.")))))
-
-;; :relevant-files
-
-
 ;;;; %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 ;;;; Integration with anything-show-completion
 ;;;; %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+;; rubikitch's patch. thanks!! :)
 (when (require 'anything-show-completion nil t)
   (dolist (f '(plcmp-cmd-smart-complete
                plcmp-cmd-complete-all
