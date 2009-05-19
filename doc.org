@@ -21,6 +21,11 @@
 
         (install-elisp "http://..../perl-completion.el")
 
+    See http://www.emacswiki.org/emacs/InstallElisp for more detail.
+
+    And auto-install.el is similar to install-elisp.el.
+    See http://www.emacswiki.org/emacs/AutoInstall for more detail.
+
 **** Emacs version
      perl-completion.el needs emacs version higher than 22.
 
