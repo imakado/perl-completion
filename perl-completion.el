@@ -223,6 +223,14 @@
 ;; M-x customize-group RET perl-completion RET
 
 
+
+;; Version 1.12
+;; remove current directory in @INC.
+;; fixed functions are,
+;; `plcmp--installed-modules-asynchronously'
+;; `plcmp--installed-modules-synchronously'
+;; Note, Version 1.11 is not work correctly.
+
 ;; Version 1.11
 ;; fix `plcmp-get-installed-modules'
 
@@ -705,7 +713,7 @@ then execute BODY"
   (message "fetching installed modules...")
   (let* ((modules-str (shell-command-to-string
                        (concat
-                        "find `perl -e 'pop @INC; print join(q{ }, @INC);'`"
+                        "find `perl -e 'print join(q{ }, grep(!/^\.$/, @INC));'`"
                         " -name '*.pm' -type f "
                         "| xargs egrep -h -o 'package [a-zA-Z0-9:]+;' "
                         "| perl -nle 's/package\s+(.+);/$1/; print' "
@@ -744,7 +752,7 @@ then execute BODY"
       (with-current-buffer (get-buffer-create plcmp-installed-modules-buffer-name)
         (erase-buffer))
       (let* ((command "find")
-             (args (concat "`perl -e 'shift @INC; print join(q{ }, @INC);'`"
+             (args (concat "`perl -e 'print join(q{ }, grep(!/^\.$/, @INC));'`"
                            " -name '*.pm' -type f "
                            "| xargs grep -E -h -o 'package [a-zA-Z0-9:]+;' "
                            "| perl -nle 's/package\s+(.+);/$1/; print' "
