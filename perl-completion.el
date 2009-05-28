@@ -223,6 +223,9 @@
 ;; M-x customize-group RET perl-completion RET
 
 
+;; Version 1.11
+;; fix `plcmp-get-installed-modules'
+
 
 ;;;code:
 (require 'cl)
@@ -350,7 +353,7 @@ directory is added to PERL5LIB when invoke completion commands."
 
 
 ;;; variables
-(defvar plcmp-version 1.10)
+(defvar plcmp-version 1.11)
 
 (defvar plcmp-default-lighter  " PLCompletion")
 
@@ -741,7 +744,7 @@ then execute BODY"
       (with-current-buffer (get-buffer-create plcmp-installed-modules-buffer-name)
         (erase-buffer))
       (let* ((command "find")
-             (args (concat "`perl -e 'pop @INC; print join(q{ }, @INC);'`"
+             (args (concat "`perl -e 'shift @INC; print join(q{ }, @INC);'`"
                            " -name '*.pm' -type f "
                            "| xargs grep -E -h -o 'package [a-zA-Z0-9:]+;' "
                            "| perl -nle 's/package\s+(.+);/$1/; print' "
