@@ -666,6 +666,16 @@ then execute BODY"
         (when (string-equal str "::")
           (buffer-substring-no-properties start (point)))))))
 
+(defun plcmp-package-if-use-context ()
+  (save-excursion
+    (let ((re (rx bol (* space) "use" (+ space) (+ not-newline) "::")))
+      (when (string-match re
+                          (buffer-substring-no-properties
+                           (line-beginning-position) (point)))
+        (buffer-substring-no-properties
+         (point)
+         (progn (skip-chars-backward "a-zA-Z0-9_:")
+                (point)))))))
 
 (defun plcmp-get-initial-real-input-list ()
   "return list (initial-input real-initial-input)"
@@ -673,6 +683,7 @@ then execute BODY"
     (let* ((start (point))
            (real-initial-input
             (cond
+             ((plcmp-package-if-use-context))
              ((plcmp--fullname))
              (t
               (skip-syntax-backward "w_")
