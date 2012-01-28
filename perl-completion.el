@@ -303,7 +303,7 @@ e.x,
   :group 'perl-completion)
 
 (defcustom plcmp-method-inspecter nil
-  "Detect how to get methods. 
+  "Detect how to get methods.
 variable is one of the following values:
 'class-inspector
 'scrape
@@ -466,7 +466,7 @@ directory is added to PERL5LIB when invoke completion commands."
       (define-key map (kbd "C-c C-c s") 'plcmp-cmd-show-environment)
       (define-key map (kbd "C-c C-c u") 'plcmp-cmd-update-check)
       (define-key map (kbd "C-c C-c d") 'plcmp-cmd-set-additional-lib-directory))
-    
+
     map))
 
 (defvar plcmp-anything-map
@@ -1696,8 +1696,8 @@ return buffer or nil unless process return 0"
   '(
     plcmp-anything-source-completion-buffer-dabbrevs
     plcmp-anything-source-completion-builtin-variables
-    plcmp-anything-source-completion-builtin-functions    
-    plcmp-anything-source-completion-using-modules    
+    plcmp-anything-source-completion-builtin-functions
+    plcmp-anything-source-completion-using-modules
     plcmp-anything-source-completion-installed-modules
     ))
 
