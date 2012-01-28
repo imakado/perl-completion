@@ -1,4 +1,4 @@
-;;; perl-completion.el - minor mode provides useful features for editing perl codes
+;;; perl-completion.el --- minor mode providing useful features for editing perl code
 
 ;; Copyright (c) 2009 by KAYAC Inc.
 
@@ -23,6 +23,10 @@
 ;; Prefix: plcmp-
 
 ;;; Commentary:
+
+;; This package provides a minor mode with features useful for editing
+;; perl code.
+
 ;; Tested on Emacs 22
 ;;
 ;; Thanks to rubikitch for integration with anything-show-completion.
@@ -235,7 +239,7 @@
 ;; fix `plcmp-get-installed-modules'
 
 
-;;;code:
+;;; Code:
 (require 'cl)
 (require 'anything) ; perl-completion.el uses `anything-aif' macro.
 (require 'cperl-mode)
