@@ -1,4 +1,4 @@
-;;; perl-completion.el - minor mode provides useful features for editing perl codes
+;;; perl-completion.el --- minor mode providing useful features for editing perl code
 
 ;; Copyright (c) 2009 by KAYAC Inc.
 
@@ -23,6 +23,10 @@
 ;; Prefix: plcmp-
 
 ;;; Commentary:
+
+;; This package provides a minor mode with features useful for editing
+;; perl code.
+
 ;; Tested on Emacs 22
 ;;
 ;; Thanks to rubikitch for integration with anything-show-completion.
@@ -235,7 +239,7 @@
 ;; fix `plcmp-get-installed-modules'
 
 
-;;;code:
+;;; Code:
 (require 'cl)
 (require 'anything) ; perl-completion.el uses `anything-aif' macro.
 (require 'cperl-mode)
@@ -299,7 +303,7 @@ e.x,
   :group 'perl-completion)
 
 (defcustom plcmp-method-inspecter nil
-  "Detect how to get methods. 
+  "Detect how to get methods.
 variable is one of the following values:
 'class-inspector
 'scrape
@@ -462,7 +466,7 @@ directory is added to PERL5LIB when invoke completion commands."
       (define-key map (kbd "C-c C-c s") 'plcmp-cmd-show-environment)
       (define-key map (kbd "C-c C-c u") 'plcmp-cmd-update-check)
       (define-key map (kbd "C-c C-c d") 'plcmp-cmd-set-additional-lib-directory))
-    
+
     map))
 
 (defvar plcmp-anything-map
@@ -1692,8 +1696,8 @@ return buffer or nil unless process return 0"
   '(
     plcmp-anything-source-completion-buffer-dabbrevs
     plcmp-anything-source-completion-builtin-variables
-    plcmp-anything-source-completion-builtin-functions    
-    plcmp-anything-source-completion-using-modules    
+    plcmp-anything-source-completion-builtin-functions
+    plcmp-anything-source-completion-using-modules
     plcmp-anything-source-completion-installed-modules
     ))
 
