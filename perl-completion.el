@@ -1,4 +1,4 @@
-;;; perl-completion.el - minor mode provides useful features for editing perl codes
+;;; perl-completion.el --- minor mode provides useful features for editing perl codes
 
 ;; Copyright (c) 2009 by KAYAC Inc.
 
