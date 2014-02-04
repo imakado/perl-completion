@@ -474,6 +474,7 @@ directory is added to PERL5LIB when invoke completion commands."
       (define-key map (kbd "J") 'scroll-other-window)
       (define-key map (kbd "K") 'scroll-other-window-down)
       (define-key map (kbd "L") 'plcmp-acmd-persistent-look)
+      (define-key map (kbd "M") 'plcmp-acmd-open-module-file)
       (set-keymap-parent map anything-map)
 
       map))
@@ -2041,6 +2042,10 @@ otherwise
 (defun plcmp-acmd-persistent-look ()
   (interactive)
   (anything-execute-persistent-action))
+
+(defun plcmp-acmd-open-module-file ()
+  (interactive)
+  (plcmp-re-select-action "^Open module file"))
 
 (defun plcmp-acmd-goto-looking-point (&optional pop-to-buffer)
   (interactive "P")
